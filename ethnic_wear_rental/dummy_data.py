@@ -113,6 +113,8 @@ CUSTOMERS = [
     ("Sunita Rao",       "8765432109", "sunita.r@email.com",        "78, Koramangala, Bangalore 560034",                   "Passport",        "P9876543"),
     ("Nikhil Sharma",    "8654321098", "nikhil.s@email.com",        "5, Salt Lake, Kolkata 700064",                        "Aadhar",          "5566 7788 9900"),
     ("Kavya Menon",      "8543210987", "kavya.m@email.com",         "19, Palarivattom, Kochi 682025",                      "Driving Licence", "KL0420240056789"),
+    ("Mukti Patel",      "9988776655", "mukti@email.com",           "1, Main Road, Rajkot 360001",                         "Aadhar",          "1111 2222 3333"),
+    ("Rajvi Patel",      "9988776644", "rajvi@email.com",           "2, Main Road, Rajkot 360001",                         "Aadhar",          "4444 5555 6666"),
 ]
 
 # ──────────────────────────────────────────────────────────────
