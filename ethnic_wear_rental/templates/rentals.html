@@ -1,0 +1,846 @@
+{% extends "base.html" %}
+{% block title %}Rentals{% endblock %}
+{% block page_title %}Rentals{% endblock %}
+{% block page_subtitle %}Track all rental orders and returns{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="openNewRental()">
+  <span class="material-symbols-rounded">add</span> New Rental
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Filter Bar ─────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px">
+  <div class="filter-bar">
+    <div class="search-bar">
+      <span class="search-icon material-symbols-rounded">search</span>
+      <input type="text" class="form-control" id="rent-search"
+             placeholder="Search by code, customer name, phone…" oninput="debounceLoad()">
+    </div>
+    <div class="tab-bar" id="status-tabs">
+      <button class="tab-btn active" data-status="" onclick="setStatusFilter(this,'')">All</button>
+      <button class="tab-btn" data-status="Active,Overdue" onclick="setStatusFilter(this,'Active,Overdue')">Active</button>
+      <button class="tab-btn" data-status="Overdue"   onclick="setStatusFilter(this,'Overdue')">Overdue</button>
+      <button class="tab-btn" data-status="Returned"  onclick="setStatusFilter(this,'Returned')">Returned</button>
+      <button class="tab-btn" data-status="Cancelled" onclick="setStatusFilter(this,'Cancelled')">Cancelled</button>
+    </div>
+    <span class="text-muted text-sm" id="rent-total-label"></span>
+  </div>
+</div>
+
+<!-- ── Rentals Table ──────────────────────────────────────── -->
+<div class="card">
+  <div id="rentals-area">
+    <div class="loading-state"><div class="spinner"></div><p style="margin-top:12px">Loading rentals…</p></div>
+  </div>
+  <div class="pagination" id="rent-pagination" style="display:none">
+    <span class="pagination-info" id="rent-pag-info"></span>
+    <div class="pagination-btns" id="rent-pag-btns"></div>
+  </div>
+</div>
+
+
+<!-- ══ NEW RENTAL MODAL ═══════════════════════════════════════ -->
+<div class="modal-overlay" id="new-rental-modal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">add_circle</span>
+        Create New Rental
+      </span>
+      <button class="modal-close" onclick="closeModal('new-rental-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+
+        <!-- Left: Details -->
+        <div>
+          <h3 style="font-size:0.9rem;margin-bottom:14px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em">Rental Details</h3>
+          <div class="form-group">
+            <label class="form-label">Customer *</label>
+            <div style="position:relative">
+              <input type="text" class="form-control" id="nr-cust-search" placeholder="Search customer by name or phone…" oninput="searchCustomers()" autocomplete="off">
+              <div id="nr-cust-dropdown" style="position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1.5px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);max-height:180px;overflow-y:auto;z-index:200;display:none"></div>
+            </div>
+            <input type="hidden" id="nr-customer-id">
+            <div id="nr-cust-selected" style="display:none;margin-top:8px;padding:10px;background:var(--accent-pale);border-radius:var(--radius);border:1px solid var(--accent);font-size:0.87rem;display:flex;align-items:center;justify-content:space-between"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Rental Date *</label>
+              <input type="date" class="form-control" id="nr-rental-date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Return Due Date *</label>
+              <input type="date" class="form-control" id="nr-due-date">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" id="nr-notes" placeholder="Any special instructions…" style="min-height:60px"></textarea>
+          </div>
+
+          <!-- Summary -->
+          <div style="background:linear-gradient(135deg,var(--accent-pale),var(--surface-2));border:1px solid var(--accent);border-radius:var(--radius-lg);padding:16px;margin-top:8px">
+            <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--primary);margin-bottom:12px">Order Summary</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:0.87rem">
+              <span class="text-muted">Items</span>
+              <strong id="sum-items">0</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:0.87rem">
+              <span class="text-muted">Rental Total</span>
+              <strong id="sum-rental">₹0.00</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:0.87rem">
+              <span class="text-muted">Deposit</span>
+              <strong id="sum-deposit">₹0.00</strong>
+            </div>
+            <div class="divider" style="margin:10px 0"></div>
+            <div style="display:flex;justify-content:space-between;font-size:1rem;font-weight:700">
+              <span style="color:var(--primary)">Grand Total</span>
+              <span style="color:var(--accent)" id="sum-grand">₹0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Items -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <h3 style="font-size:0.9rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em">Add Items *</h3>
+            <button type="button" class="btn btn-accent btn-sm" onclick="showItemPicker()">
+              <span class="material-symbols-rounded">add</span> Add Item
+            </button>
+          </div>
+          <div id="nr-items-list">
+            <div style="text-align:center;padding:40px 20px;color:var(--text-muted);background:var(--surface-2);border-radius:var(--radius-lg);border:2px dashed var(--border)">
+              <span class="material-symbols-rounded" style="font-size:36px;opacity:0.4;display:block;margin-bottom:8px">checkroom</span>
+              No items added yet.<br><small>Click "Add Item" to browse inventory.</small>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('new-rental-modal')">Cancel</button>
+      <button class="btn btn-primary btn-lg" onclick="submitNewRental()">
+        <span class="material-symbols-rounded">receipt_long</span> Create Rental
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ ITEM PICKER MODAL ══════════════════════════════════════ -->
+<div class="modal-overlay" id="item-picker-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">checkroom</span>
+        Pick an Item
+      </span>
+      <button class="modal-close" onclick="closeModal('item-picker-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div class="filter-bar" style="border-bottom:1px solid var(--border)">
+        <div class="search-bar" style="max-width:100%">
+          <span class="search-icon material-symbols-rounded">search</span>
+          <input type="text" class="form-control" id="picker-search" placeholder="Search items…" oninput="loadPicker()">
+        </div>
+        <select class="filter-select" id="picker-category" onchange="loadPicker()">
+          <option value="">All Categories</option>
+        </select>
+      </div>
+      <div id="picker-items" style="max-height:400px;overflow-y:auto;padding:16px">
+        <div class="loading-state"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('item-picker-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ VIEW RENTAL MODAL ══════════════════════════════════════ -->
+<div class="modal-overlay" id="view-rental-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">receipt_long</span>
+        Rental Details
+      </span>
+      <button class="modal-close" onclick="closeModal('view-rental-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="view-rental-body"></div>
+    <div class="modal-footer" id="view-rental-footer"></div>
+  </div>
+</div>
+
+
+<!-- ══ RETURN MODAL ═══════════════════════════════════════════ -->
+<div class="modal-overlay" id="return-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">assignment_return</span>
+        Process Return
+      </span>
+      <button class="modal-close" onclick="closeModal('return-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ret-rental-id">
+      <input type="hidden" id="ret-due-date">
+
+      <!-- Rental info banner -->
+      <div id="ret-info" style="margin-bottom:16px"></div>
+
+      <!-- Item checklist -->
+      <div style="margin-bottom:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <label class="form-label" style="margin:0">Select Items Being Returned *</label>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="retSelectAll()">Select All</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="retSelectNone()">Clear</button>
+          </div>
+        </div>
+        <div id="ret-items-list" style="border:1.5px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
+          <div class="loading-state" style="padding:24px"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Return date + late fee -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Return Date *</label>
+          <input type="date" class="form-control" id="ret-date" oninput="retCheckLate()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Late Fee / Day (₹)</label>
+          <input type="number" class="form-control" id="ret-late-fee" value="50" min="0" oninput="retCheckLate()">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Return Note (optional)</label>
+        <input type="text" class="form-control" id="ret-note" placeholder="e.g. Stain on dupatta, minor damage…">
+      </div>
+
+      <!-- Late fee alert -->
+      <div id="ret-late-alert"></div>
+
+      <!-- Selected summary -->
+      <div id="ret-summary" style="display:none;padding:14px;background:linear-gradient(135deg,var(--accent-pale),var(--surface-2));border:1px solid var(--accent);border-radius:var(--radius-lg);font-size:0.87rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span class="text-muted">Items selected for return</span>
+          <strong id="ret-sum-count">0</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span class="text-muted">Items still out after this</span>
+          <strong id="ret-sum-remaining" style="color:var(--warning)">0</strong>
+        </div>
+        <div id="ret-sum-late-row" style="display:none;display:flex;justify-content:space-between">
+          <span class="text-muted">Late fee this batch</span>
+          <strong id="ret-sum-late" style="color:var(--danger)">₹0</strong>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('return-modal')">Cancel</button>
+      <button class="btn btn-success" id="ret-submit-btn" onclick="submitReturn()">
+        <span class="material-symbols-rounded">done_all</span>
+        <span id="ret-submit-label">Confirm Return</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rentPage = 1, rentPages = 1, rentStatusFilter = '';
+let debounceTimer;
+let nrItems = [];  // items in current new rental
+
+function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(()=>{ rentPage=1; loadRentals(); }, 350); }
+
+function setStatusFilter(btn, status) {
+  document.querySelectorAll('#status-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  rentStatusFilter = status;
+  rentPage = 1;
+  loadRentals();
+}
+
+// ── STATUS BADGE ──────────────────────────────────────────
+function statusBadge(s) {
+  const map = { Active:'badge-active', Returned:'badge-returned', Overdue:'badge-overdue', Cancelled:'badge-cancelled' };
+  return `<span class="badge ${map[s]||''}">${s}</span>`;
+}
+
+// ── LOAD RENTALS ──────────────────────────────────────────
+async function loadRentals() {
+  const search = document.getElementById('rent-search').value;
+  const area   = document.getElementById('rentals-area');
+  area.innerHTML = `<div class="loading-state"><div class="spinner"></div><p style="margin-top:12px">Loading…</p></div>`;
+
+  // Build status param — may be multiple values e.g. "Active,Overdue"
+  const statusParam = rentStatusFilter
+    ? rentStatusFilter.split(',').map(s => `status=${encodeURIComponent(s.trim())}`).join('&')
+    : '';
+
+  const r = await api(`/api/rentals?search=${encodeURIComponent(search)}&${statusParam}&page=${rentPage}&per_page=10`);
+  if (r.status !== 'success') {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error loading rentals</h3></div>`;
+    return;
+  }
+  rentPages = r.data.pages;
+  document.getElementById('rent-total-label').textContent = `${r.data.total} rental${r.data.total!==1?'s':''}`;
+
+  if (r.data.rentals.length === 0) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><h3>No rentals found</h3><p>Create your first rental order.</p><button class="btn btn-primary mt-4" onclick="openNewRental()"><span class="material-symbols-rounded">add</span> New Rental</button></div>`;
+    document.getElementById('rent-pagination').style.display = 'none';
+    return;
+  }
+
+  area.innerHTML = `
+    <div class="table-wrapper">
+      <table>
+        <thead><tr>
+          <th>Rental Code</th><th>Customer</th><th>Rental Date</th>
+          <th>Due Date</th><th>Items</th><th>Amount</th>
+          <th>Deposit</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+          ${r.data.rentals.map(rn => {
+            const dueDateStr = rn.return_due_date ? (typeof rn.return_due_date === 'string' ? rn.return_due_date : rn.return_due_date.toString()).substring(0,10) : '';
+            const returnedCount = rn.returned_count || 0;
+            const totalCount    = rn.item_count || 0;
+            const partialLabel  = (rn.status === 'Active' || rn.status === 'Overdue') && returnedCount > 0
+              ? `<div style="font-size:0.7rem;color:var(--success);margin-top:2px">✓ ${returnedCount}/${totalCount} returned</div>` : '';
+            return `
+            <tr>
+              <td>
+                <strong style="font-family:'Playfair Display',serif;color:var(--primary);cursor:pointer"
+                  onclick="viewRental(${rn.id})">${rn.rental_code}</strong>
+                ${partialLabel}
+              </td>
+              <td>
+                <div style="font-weight:600">${rn.customer_name}</div>
+                <div class="text-muted text-sm">${rn.customer_phone}</div>
+              </td>
+              <td>${fmtDate(rn.rental_date)}</td>
+              <td style="color:${rn.status==='Overdue'?'var(--danger)':''};font-weight:${rn.status==='Overdue'?700:400}">
+                ${fmtDate(rn.return_due_date)}
+                ${rn.status==='Overdue'?'<span class="material-symbols-rounded" style="font-size:14px;vertical-align:middle;color:var(--danger)">warning</span>':''}
+              </td>
+              <td><span class="badge" style="background:var(--surface-2);color:var(--text-secondary)">${totalCount} item${totalCount!==1?'s':''}</span></td>
+              <td style="font-weight:700;color:var(--accent)">${fmt(rn.total_amount)}</td>
+              <td>${fmt(rn.deposit_paid)}</td>
+              <td>${statusBadge(rn.status)}</td>
+              <td>
+                <div class="td-actions">
+                  <button class="btn btn-ghost btn-sm btn-icon" onclick="viewRental(${rn.id})" title="View">
+                    <span class="material-symbols-rounded">visibility</span>
+                  </button>
+                  ${(rn.status==='Active'||rn.status==='Overdue') ? `
+                    <button class="btn btn-success btn-sm" style="font-size:0.75rem;padding:6px 10px"
+                      onclick="openReturn(${rn.id},'${rn.rental_code}','${dueDateStr}')" title="Process Return">
+                      <span class="material-symbols-rounded" style="font-size:16px">assignment_return</span> Return
+                    </button>
+                    <button class="btn btn-danger btn-sm btn-icon" onclick="cancelRental(${rn.id},'${rn.rental_code}')" title="Cancel">
+                      <span class="material-symbols-rounded">cancel</span>
+                    </button>` : ''}
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  renderPagination(r.data.total, r.data.page, r.data.pages, r.data.per_page);
+}
+
+function renderPagination(total, page, pages, per_page) {
+  const pag = document.getElementById('rent-pagination');
+  if (total <= per_page) { pag.style.display='none'; return; }
+  const start = (page-1)*per_page+1, end = Math.min(page*per_page, total);
+  document.getElementById('rent-pag-info').textContent = `Showing ${start}–${end} of ${total}`;
+  let btns = `<button class="page-btn" onclick="goPage(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+  for (let i=Math.max(1,page-2); i<=Math.min(pages,page+2); i++) {
+    btns += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  btns += `<button class="page-btn" onclick="goPage(${page+1})" ${page>=pages?'disabled':''}>›</button>`;
+  document.getElementById('rent-pag-btns').innerHTML = btns;
+  pag.style.display = 'flex';
+}
+
+function goPage(p) { if(p<1||p>rentPages) return; rentPage=p; loadRentals(); }
+
+// ── VIEW RENTAL ────────────────────────────────────────────
+async function viewRental(id) {
+  const r = await api(`/api/rentals/${id}`);
+  if (r.status !== 'success') return;
+  const { rental: rn, items } = r.data;
+  document.getElementById('view-rental-body').innerHTML = `
+    <div style="background:linear-gradient(135deg,var(--accent-pale),var(--surface-2));padding:16px;border-radius:var(--radius-lg);margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;color:var(--primary)">${rn.rental_code}</div>
+        <div style="font-size:0.8rem;color:var(--text-muted)">Created ${fmtDate(rn.created_at)}</div>
+      </div>
+      ${statusBadge(rn.status)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      ${[
+        ['Customer',     rn.customer_name],
+        ['Phone',        rn.customer_phone],
+        ['Email',        rn.customer_email||'—'],
+        ['Rental Date',  fmtDate(rn.rental_date)],
+        ['Due Date',     fmtDate(rn.return_due_date)],
+        ['Return Date',  rn.actual_return_date ? fmtDate(rn.actual_return_date) : '—'],
+        ['Rental Amount',`<strong style="color:var(--accent)">${fmt(rn.total_amount)}</strong>`],
+        ['Deposit Paid', fmt(rn.deposit_paid)],
+        ['Late Fee',     rn.late_fee > 0 ? `<strong style="color:var(--danger)">${fmt(rn.late_fee)}</strong>` : '—'],
+        ['Notes',        rn.notes||'—'],
+      ].map(([l,v])=>`
+        <div style="padding:12px;background:var(--surface-2);border-radius:var(--radius);border:1px solid var(--border)">
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:3px">${l}</div>
+          <div style="font-weight:600;font-size:0.87rem">${v}</div>
+        </div>`).join('')}
+    </div>
+    <h3 style="font-size:0.95rem;margin-bottom:12px">Rented Items (${items.length})</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Item</th><th>Category</th><th>Size</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Status</th></tr></thead>
+        <tbody>${items.map(it=>`
+          <tr>
+            <td><strong style="color:var(--primary)">${it.item_name}</strong><div class="text-muted text-sm">${it.color}</div></td>
+            <td>${it.category_name}</td>
+            <td>${it.size}</td>
+            <td>${it.quantity}</td>
+            <td style="color:var(--accent);font-weight:600">${fmt(it.unit_price)}</td>
+            <td style="font-weight:700">${fmt(it.unit_price * it.quantity)}</td>
+            <td>${it.returned_at
+              ? `<span class="badge badge-returned">Returned ${fmtDate(it.returned_at)}</span>`
+              : `<span class="badge badge-rented">Out</span>`}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  const footer = document.getElementById('view-rental-footer');
+  footer.innerHTML = `<button class="btn btn-ghost" onclick="closeModal('view-rental-modal')">Close</button>`;
+  if (rn.status === 'Active' || rn.status === 'Overdue') {
+    const dueDateStr = rn.return_due_date ? rn.return_due_date.toString().substring(0,10) : '';
+    footer.innerHTML += `
+      <button class="btn btn-success" onclick="closeModal('view-rental-modal');openReturn(${rn.id},'${rn.rental_code}','${dueDateStr}')">
+        <span class="material-symbols-rounded">assignment_return</span> Process Return
+      </button>
+      <button class="btn btn-danger" onclick="closeModal('view-rental-modal');cancelRental(${rn.id},'${rn.rental_code}')">
+        <span class="material-symbols-rounded">cancel</span> Cancel
+      </button>`;
+  }
+  openModal('view-rental-modal');
+}
+
+// ── NEW RENTAL ─────────────────────────────────────────────
+function openNewRental() {
+  nrItems = [];
+  document.getElementById('nr-cust-search').value  = '';
+  document.getElementById('nr-customer-id').value  = '';
+  document.getElementById('nr-cust-selected').style.display = 'none';
+  document.getElementById('nr-cust-dropdown').style.display = 'none';
+  document.getElementById('nr-notes').value = '';
+  const today = new Date().toISOString().split('T')[0];
+  const due   = new Date(Date.now() + 3*86400000).toISOString().split('T')[0];
+  document.getElementById('nr-rental-date').value = today;
+  document.getElementById('nr-due-date').value     = due;
+  renderNrItems();
+  updateSummary();
+  openModal('new-rental-modal');
+}
+window.openNewRentalModal = openNewRental;
+
+// Customer search in new rental
+async function searchCustomers() {
+  const q = document.getElementById('nr-cust-search').value.trim();
+  const dd = document.getElementById('nr-cust-dropdown');
+  if (q.length < 1) { dd.style.display='none'; return; }
+  const r = await api(`/api/customers?search=${encodeURIComponent(q)}&per_page=6`);
+  if (r.status !== 'success' || !r.data.customers.length) { dd.style.display='none'; return; }
+  dd.innerHTML = r.data.customers.map(c => `
+    <div onclick="selectCustomer(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.phone}')"
+         style="padding:10px 14px;cursor:pointer;font-size:0.87rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
+         onmouseenter="this.style.background='var(--accent-pale)'" onmouseleave="this.style.background=''">
+      <strong>${c.name}</strong><span class="text-muted">${c.phone}</span>
+    </div>`).join('');
+  dd.style.display = 'block';
+}
+
+function selectCustomer(id, name, phone) {
+  document.getElementById('nr-customer-id').value = id;
+  document.getElementById('nr-cust-search').value = '';
+  document.getElementById('nr-cust-dropdown').style.display = 'none';
+  const sel = document.getElementById('nr-cust-selected');
+  sel.innerHTML = `<div><strong>${name}</strong><span class="text-muted" style="margin-left:10px">${phone}</span></div><button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="clearCustomer()"><span class="material-symbols-rounded">close</span></button>`;
+  sel.style.display = 'flex';
+}
+
+function clearCustomer() {
+  document.getElementById('nr-customer-id').value = '';
+  document.getElementById('nr-cust-selected').style.display = 'none';
+}
+
+// Item Picker
+let pickerCategories = [];
+async function loadPickerCategories() {
+  const r = await api('/api/categories');
+  if (r.status !== 'success') return;
+  pickerCategories = r.data;
+  const sel = document.getElementById('picker-category');
+  r.data.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+}
+
+async function showItemPicker() {
+  await loadPicker();
+  openModal('item-picker-modal');
+}
+
+async function loadPicker() {
+  const search   = document.getElementById('picker-search').value;
+  const category = document.getElementById('picker-category').value;
+  const area     = document.getElementById('picker-items');
+  area.innerHTML = `<div class="loading-state"><div class="spinner"></div></div>`;
+  const r = await api(`/api/inventory?search=${encodeURIComponent(search)}&category=${category}&status=available&per_page=20`);
+  if (r.status !== 'success' || !r.data.items.length) {
+    area.innerHTML = `<div class="empty-state" style="padding:30px"><div class="empty-icon">👗</div><h3>No available items</h3></div>`;
+    return;
+  }
+  const catEmoji = { 'Saree':'🥻','Lehenga':'👘','Salwar Kameez':'👗','Sherwani':'🎩','Kurta Pajama':'👔','Anarkali':'👗','Dhoti Kurta':'🧣','Ghagra Choli':'💃','Indo Western':'🕴','Accessories':'💎' };
+  area.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+    ${r.data.items.map(it => `
+      <div style="border:1.5px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:var(--transition)"
+           onmouseenter="this.style.borderColor='var(--accent)';this.style.background='var(--accent-pale)'"
+           onmouseleave="this.style.borderColor='var(--border)';this.style.background=''"
+           onclick="addItemToRental(${it.id},'${it.name.replace(/'/g,"\\'")}',${it.rental_price},${it.deposit_amount},'${it.size}','${it.color}','${it.category_name}',${it.quantity_available})">
+        <div style="font-size:28px;margin-bottom:8px">${catEmoji[it.category_name]||'🥻'}</div>
+        <div style="font-weight:700;font-size:0.87rem;color:var(--primary);margin-bottom:2px">${it.name}</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px">${it.size} • ${it.color}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:700;color:var(--accent)">₹${Number(it.rental_price).toLocaleString('en-IN')}</span>
+          <span class="badge badge-available">${it.quantity_available} avail</span>
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+
+function addItemToRental(id, name, price, deposit, size, color, category, maxQty) {
+  const existing = nrItems.find(i => i.id === id);
+  if (existing) {
+    if (existing.qty < maxQty) existing.qty++;
+    else { showToast(`Only ${maxQty} available`, 'warning'); return; }
+  } else {
+    nrItems.push({ id, name, price, deposit, size, color, category, qty: 1, maxQty });
+  }
+  closeModal('item-picker-modal');
+  renderNrItems();
+  updateSummary();
+  showToast(`${name} added`, 'success');
+}
+
+function renderNrItems() {
+  const el = document.getElementById('nr-items-list');
+  if (!nrItems.length) {
+    el.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--text-muted);background:var(--surface-2);border-radius:var(--radius-lg);border:2px dashed var(--border)"><span class="material-symbols-rounded" style="font-size:36px;opacity:0.4;display:block;margin-bottom:8px">checkroom</span>No items added yet.<br><small>Click "Add Item" to browse inventory.</small></div>`;
+    return;
+  }
+  el.innerHTML = nrItems.map((it, idx) => `
+    <div class="rental-item-row">
+      <div>
+        <div class="item-label">${it.name}</div>
+        <div class="text-muted text-sm">${it.size} • ${it.color}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="changeQty(${idx},-1)">−</button>
+        <span style="min-width:24px;text-align:center;font-weight:700">${it.qty}</span>
+        <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="changeQty(${idx},1)">+</button>
+      </div>
+      <div class="item-price-tag">₹${(it.price * it.qty).toLocaleString('en-IN')}</div>
+      <button type="button" class="btn btn-danger btn-sm btn-icon" onclick="removeNrItem(${idx})">
+        <span class="material-symbols-rounded">delete</span>
+      </button>
+    </div>`).join('');
+}
+
+function changeQty(idx, delta) {
+  nrItems[idx].qty = Math.max(1, Math.min(nrItems[idx].maxQty, nrItems[idx].qty + delta));
+  renderNrItems(); updateSummary();
+}
+
+function removeNrItem(idx) { nrItems.splice(idx, 1); renderNrItems(); updateSummary(); }
+
+function updateSummary() {
+  const rental  = nrItems.reduce((s,i) => s + i.price*i.qty, 0);
+  const deposit = nrItems.reduce((s,i) => s + i.deposit*i.qty, 0);
+  document.getElementById('sum-items').textContent   = nrItems.reduce((s,i)=>s+i.qty,0);
+  document.getElementById('sum-rental').textContent  = fmt(rental);
+  document.getElementById('sum-deposit').textContent = fmt(deposit);
+  document.getElementById('sum-grand').textContent   = fmt(rental + deposit);
+}
+
+async function submitNewRental() {
+  const custId   = document.getElementById('nr-customer-id').value;
+  const renDate  = document.getElementById('nr-rental-date').value;
+  const dueDate  = document.getElementById('nr-due-date').value;
+  if (!custId)  { showToast('Please select a customer', 'error'); return; }
+  if (!renDate) { showToast('Please set a rental date', 'error'); return; }
+  if (!dueDate) { showToast('Please set a return due date', 'error'); return; }
+  if (!nrItems.length) { showToast('Please add at least one item', 'error'); return; }
+
+  const body = {
+    customer_id:     parseInt(custId),
+    rental_date:     renDate,
+    return_due_date: dueDate,
+    notes:           document.getElementById('nr-notes').value,
+    items: nrItems.map(i => ({ inventory_id: i.id, quantity: i.qty }))
+  };
+
+  const btn = document.querySelector('#new-rental-modal .btn-primary');
+  btn.disabled = true; btn.innerHTML = '<span class="material-symbols-rounded" style="animation:spin 0.7s linear infinite">autorenew</span> Creating…';
+  const r = await api('/api/rentals', { method:'POST', body: JSON.stringify(body) });
+  btn.disabled = false; btn.innerHTML = '<span class="material-symbols-rounded">receipt_long</span> Create Rental';
+  if (r.status === 'success') {
+    showToast(`Rental ${r.data.rental_code} created!`, 'success');
+    closeModal('new-rental-modal');
+    loadRentals();
+  } else {
+    showToast(r.message || 'Failed to create rental', 'error');
+  }
+}
+
+// ── RETURN ─────────────────────────────────────────────────
+let retAllItems = [];   // all line-items loaded for current rental
+
+async function openReturn(id, code, dueDate) {
+  retAllItems = [];
+  document.getElementById('ret-rental-id').value = id;
+  document.getElementById('ret-due-date').value  = dueDate || '';
+  document.getElementById('ret-date').value      = new Date().toISOString().split('T')[0];
+  document.getElementById('ret-late-fee').value  = 50;
+  document.getElementById('ret-note').value      = '';
+  document.getElementById('ret-late-alert').innerHTML = '';
+  document.getElementById('ret-summary').style.display = 'none';
+
+  document.getElementById('ret-info').innerHTML = `
+    <div class="alert alert-info" style="margin-bottom:0">
+      <span class="material-symbols-rounded">info</span>
+      Return for <strong>${code}</strong> &nbsp;|&nbsp; Due: <strong>${fmtDate(dueDate)}</strong>
+    </div>`;
+
+  // Load items
+  document.getElementById('ret-items-list').innerHTML =
+    `<div class="loading-state" style="padding:24px"><div class="spinner"></div></div>`;
+  openModal('return-modal');
+
+  const r = await api(`/api/rentals/${id}/items`);
+  if (r.status !== 'success') {
+    document.getElementById('ret-items-list').innerHTML =
+      `<div class="empty-state" style="padding:20px"><p>Failed to load items.</p></div>`;
+    return;
+  }
+  retAllItems = r.data;
+  renderRetItems();
+  retUpdateSummary();
+  retCheckLate();
+}
+
+function renderRetItems() {
+  const unreturned = retAllItems.filter(it => !it.returned_at);
+  const returned   = retAllItems.filter(it =>  it.returned_at);
+
+  if (retAllItems.length === 0) {
+    document.getElementById('ret-items-list').innerHTML =
+      `<div class="empty-state" style="padding:20px"><p>No items found.</p></div>`;
+    return;
+  }
+
+  let html = '';
+
+  // Unreturned items — checkable
+  unreturned.forEach(it => {
+    html += `
+      <label style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                    border-bottom:1px solid var(--border);cursor:pointer;
+                    transition:var(--transition)"
+             onmouseenter="this.style.background='var(--accent-pale)'"
+             onmouseleave="this.style.background=''">
+        <input type="checkbox" class="ret-item-cb" value="${it.id}"
+               style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;flex-shrink:0"
+               onchange="retUpdateSummary()" checked>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:0.9rem;color:var(--primary)">${it.item_name}</div>
+          <div style="font-size:0.76rem;color:var(--text-muted)">${it.category_name} &nbsp;•&nbsp; ${it.size} &nbsp;•&nbsp; ${it.color}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-weight:700;color:var(--accent)">₹${Number(it.unit_price).toLocaleString('en-IN')}</div>
+          <div style="font-size:0.72rem;color:var(--text-muted)">qty ${it.quantity}</div>
+        </div>
+        <span class="badge badge-rented" style="flex-shrink:0">Out</span>
+      </label>`;
+  });
+
+  // Already-returned items — read-only
+  returned.forEach(it => {
+    html += `
+      <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;
+                  border-bottom:1px solid var(--border);opacity:0.55;background:var(--surface-2)">
+        <span class="material-symbols-rounded" style="color:var(--success);flex-shrink:0">check_circle</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:0.88rem;text-decoration:line-through;color:var(--text-secondary)">${it.item_name}</div>
+          <div style="font-size:0.74rem;color:var(--text-muted)">${it.category_name} &nbsp;•&nbsp; ${it.size} &nbsp;•&nbsp; ${it.color}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:0.78rem;color:var(--success);font-weight:600">Returned ${fmtDate(it.returned_at)}</div>
+        </div>
+        <span class="badge badge-returned" style="flex-shrink:0">Done</span>
+      </div>`;
+  });
+
+  if (!html) html = `<div class="empty-state" style="padding:20px"><p>All items already returned.</p></div>`;
+  document.getElementById('ret-items-list').innerHTML = html;
+}
+
+function retSelectAll() {
+  document.querySelectorAll('.ret-item-cb').forEach(cb => cb.checked = true);
+  retUpdateSummary();
+}
+
+function retSelectNone() {
+  document.querySelectorAll('.ret-item-cb').forEach(cb => cb.checked = false);
+  retUpdateSummary();
+}
+
+function retUpdateSummary() {
+  const checked   = [...document.querySelectorAll('.ret-item-cb:checked')].map(cb => parseInt(cb.value));
+  const unreturned = retAllItems.filter(it => !it.returned_at);
+  const remaining  = unreturned.length - checked.length;
+
+  const sumEl = document.getElementById('ret-summary');
+  if (checked.length > 0) {
+    sumEl.style.display = 'block';
+    document.getElementById('ret-sum-count').textContent     = checked.length;
+    document.getElementById('ret-sum-remaining').textContent = Math.max(0, remaining);
+    document.getElementById('ret-sum-remaining').style.color =
+      remaining > 0 ? 'var(--warning)' : 'var(--success)';
+  } else {
+    sumEl.style.display = 'none';
+  }
+
+  // Update button label
+  const lbl = document.getElementById('ret-submit-label');
+  if (remaining > 0 && checked.length > 0) {
+    lbl.textContent = `Return ${checked.length} Item${checked.length > 1 ? 's' : ''} (Partial)`;
+  } else if (checked.length > 0) {
+    lbl.textContent = 'Return All & Close Rental';
+  } else {
+    lbl.textContent = 'Confirm Return';
+  }
+
+  retCheckLate();
+}
+
+function retCheckLate() {
+  const retDate  = document.getElementById('ret-date').value;
+  const dueDate  = document.getElementById('ret-due-date').value;
+  const lateEl   = document.getElementById('ret-late-alert');
+  const sumLate  = document.getElementById('ret-sum-late-row');
+  const sumLateV = document.getElementById('ret-sum-late');
+
+  if (!retDate || !dueDate) { lateEl.innerHTML = ''; return; }
+  const diff = Math.floor((new Date(retDate) - new Date(dueDate)) / 86400000);
+  if (diff > 0) {
+    const feePerDay = parseFloat(document.getElementById('ret-late-fee').value) || 50;
+    const fee       = feePerDay * diff;
+    lateEl.innerHTML = `
+      <div class="alert alert-warning">
+        <span class="material-symbols-rounded">warning</span>
+        ${diff} day(s) late — estimated late fee: <strong>₹${fee.toLocaleString('en-IN')}</strong>
+      </div>`;
+    sumLate.style.display  = 'flex';
+    sumLateV.textContent   = `₹${fee.toLocaleString('en-IN')}`;
+  } else {
+    lateEl.innerHTML = '';
+    sumLate.style.display = 'none';
+  }
+}
+
+async function submitReturn() {
+  const id      = parseInt(document.getElementById('ret-rental-id').value);
+  const checked = [...document.querySelectorAll('.ret-item-cb:checked')].map(cb => parseInt(cb.value));
+
+  if (!checked.length) { showToast('Select at least one item to return', 'warning'); return; }
+
+  const retDate = document.getElementById('ret-date').value;
+  if (!retDate)  { showToast('Please set a return date', 'error'); return; }
+
+  const body = {
+    return_date:      retDate,
+    late_fee_per_day: parseFloat(document.getElementById('ret-late-fee').value) || 50,
+    return_note:      document.getElementById('ret-note').value,
+    item_ids:         checked,
+  };
+
+  const btn = document.getElementById('ret-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-rounded" style="animation:spin 0.7s linear infinite">autorenew</span> Processing…';
+
+  const r = await api(`/api/rentals/${id}/return`, { method: 'POST', body: JSON.stringify(body) });
+
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-rounded">done_all</span> <span id="ret-submit-label">Confirm Return</span>';
+
+  if (r.status === 'success') {
+    const fee       = r.data.late_fee;
+    const remaining = r.data.items_remaining;
+    let msg = r.message;
+    if (fee > 0) msg += ` Late fee: ${fmt(fee)}.`;
+    showToast(msg, 'success');
+
+    if (remaining > 0) {
+      // Partial — reload items in the same modal so user can see what's left
+      const rentalId = id;
+      const code     = document.querySelector('#ret-info strong')?.textContent || '';
+      const due      = document.getElementById('ret-due-date').value;
+      const ri = await api(`/api/rentals/${rentalId}/items`);
+      if (ri.status === 'success') {
+        retAllItems = ri.data;
+        renderRetItems();
+        retUpdateSummary();
+        showToast(`${remaining} item(s) still out — modal updated`, 'info');
+      }
+    } else {
+      closeModal('return-modal');
+    }
+    loadRentals();
+  } else {
+    showToast(r.message || 'Return failed', 'error');
+  }
+}
+
+// ── CANCEL ─────────────────────────────────────────────────
+async function cancelRental(id, code) {
+  const ok = await confirmDialog(`Cancel rental <strong>${code}</strong>? Items will be returned to stock.`);
+  if (!ok) return;
+  const r = await api(`/api/rentals/${id}/cancel`, { method:'POST', body:'{}' });
+  if (r.status === 'success') { showToast('Rental cancelled', 'success'); loadRentals(); }
+  else showToast(r.message || 'Cancel failed', 'error');
+}
+
+// ── INIT ───────────────────────────────────────────────────
+loadPickerCategories();
+loadRentals();
+</script>
+{% endblock %}

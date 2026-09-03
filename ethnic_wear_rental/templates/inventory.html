@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block page_title %}Inventory{% endblock %}
+{% block page_subtitle %}Manage your ethnic wear collection{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="openItemModal()">
+  <span class="material-symbols-rounded">add</span> Add Item
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Filter Bar -->
+<div class="card" style="margin-bottom:20px">
+  <div class="filter-bar">
+    <div class="search-bar">
+      <span class="search-icon material-symbols-rounded">search</span>
+      <input type="text" class="form-control" id="inv-search" placeholder="Search by name, color, fabric…" oninput="debounceLoad()">
+    </div>
+    <select class="filter-select" id="inv-category" onchange="loadInventory()">
+      <option value="">All Categories</option>
+    </select>
+    <select class="filter-select" id="inv-size" onchange="loadInventory()">
+      <option value="">All Sizes</option>
+      <option>XS</option><option>S</option><option>M</option><option>L</option>
+      <option>XL</option><option>XXL</option><option>Free Size</option>
+    </select>
+    <select class="filter-select" id="inv-status" onchange="loadInventory()">
+      <option value="">All Status</option>
+      <option value="available">Available</option>
+      <option value="rented">Rented Out</option>
+    </select>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="setView('grid')" id="btn-grid-view" title="Grid View">
+        <span class="material-symbols-rounded">grid_view</span>
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="setView('table')" id="btn-table-view" title="Table View">
+        <span class="material-symbols-rounded">table_rows</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Items Area -->
+<div class="card">
+  <div id="inventory-area">
+    <div class="loading-state"><div class="spinner"></div><p style="margin-top:12px">Loading inventory…</p></div>
+  </div>
+  <div class="pagination" id="inv-pagination" style="display:none">
+    <span class="pagination-info" id="inv-pag-info"></span>
+    <div class="pagination-btns" id="inv-pag-btns"></div>
+  </div>
+</div>
+
+<!-- ══ ADD / EDIT ITEM MODAL ══════════════════════════════════ -->
+<div class="modal-overlay" id="item-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">checkroom</span>
+        <span id="item-modal-title">Add New Item</span>
+      </span>
+      <button class="modal-close" onclick="closeModal('item-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="item-form" onsubmit="submitItemForm(event)">
+        <input type="hidden" id="item-id">
+        <div class="form-row">
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Item Name *</label>
+            <input type="text" class="form-control" id="item-name" placeholder="e.g. Banarasi Silk Saree – Gold" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category *</label>
+            <select class="form-control" id="item-category" required>
+              <option value="">Select category…</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Size *</label>
+            <select class="form-control" id="item-size" required>
+              <option value="">Select size…</option>
+              <option>XS</option><option>S</option><option>M</option><option>L</option>
+              <option>XL</option><option>XXL</option><option>Free Size</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Color *</label>
+            <input type="text" class="form-control" id="item-color" placeholder="e.g. Crimson Red & Gold" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fabric</label>
+            <input type="text" class="form-control" id="item-fabric" placeholder="e.g. Banarasi Silk">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Occasion</label>
+            <input type="text" class="form-control" id="item-occasion" placeholder="e.g. Wedding, Festival">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Rental Price (₹) *</label>
+            <input type="number" class="form-control" id="item-rental-price" min="0" step="0.01" placeholder="500.00" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Deposit Amount (₹)</label>
+            <input type="number" class="form-control" id="item-deposit" min="0" step="0.01" placeholder="1000.00">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Total Quantity *</label>
+            <input type="number" class="form-control" id="item-qty" min="1" placeholder="1" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Condition</label>
+            <select class="form-control" id="item-condition">
+              <option>Excellent</option><option>Good</option>
+              <option>Fair</option><option>Needs Repair</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" id="item-desc" placeholder="Add notes about this item…"></textarea>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Image URL</label>
+            <input type="text" class="form-control" id="item-image" placeholder="https://… (optional)">
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('item-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitItemForm(event)">
+        <span class="material-symbols-rounded">save</span>
+        <span id="item-submit-label">Add Item</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW ITEM MODAL ════════════════════════════════════════ -->
+<div class="modal-overlay" id="view-item-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">info</span>
+        Item Details
+      </span>
+      <button class="modal-close" onclick="closeModal('view-item-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="view-item-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('view-item-modal')">Close</button>
+      <button class="btn btn-outline" id="view-edit-btn">
+        <span class="material-symbols-rounded">edit</span> Edit
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let invPage = 1, invView = 'grid', invTotal = 0, invPages = 1;
+let debounceTimer;
+const categoryEmoji = { 'Saree':'🥻','Lehenga':'👘','Salwar Kameez':'👗','Sherwani':'🎩',
+  'Kurta Pajama':'👔','Anarkali':'👗','Dhoti Kurta':'🧣','Ghagra Choli':'💃',
+  'Indo Western':'🕴','Accessories':'💎' };
+
+function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(()=>{ invPage=1; loadInventory(); }, 350); }
+
+async function loadCategories() {
+  const r = await api('/api/categories');
+  if (r.status !== 'success') return;
+  const catSel  = document.getElementById('inv-category');
+  const formCat = document.getElementById('item-category');
+  r.data.forEach(c => {
+    catSel.innerHTML  += `<option value="${c.id}">${c.name}</option>`;
+    formCat.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+  });
+}
+
+async function loadInventory() {
+  const search   = document.getElementById('inv-search').value;
+  const category = document.getElementById('inv-category').value;
+  const size     = document.getElementById('inv-size').value;
+  const status   = document.getElementById('inv-status').value;
+  const area     = document.getElementById('inventory-area');
+  area.innerHTML = `<div class="loading-state"><div class="spinner"></div><p style="margin-top:12px">Loading…</p></div>`;
+
+  const r = await api(`/api/inventory?search=${encodeURIComponent(search)}&category=${category}&size=${size}&status=${status}&page=${invPage}&per_page=12`);
+  if (r.status !== 'success') {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error loading data</h3></div>`;
+    return;
+  }
+  invTotal = r.data.total; invPages = r.data.pages;
+  if (r.data.items.length === 0) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">👗</div><h3>No items found</h3><p>Try adjusting your filters or add a new item.</p><button class="btn btn-primary mt-4" onclick="openItemModal()"><span class="material-symbols-rounded">add</span> Add First Item</button></div>`;
+    document.getElementById('inv-pagination').style.display = 'none';
+    return;
+  }
+  area.innerHTML = invView === 'grid' ? renderGrid(r.data.items) : renderTable(r.data.items);
+  renderPagination(r.data.total, r.data.page, r.data.pages, r.data.per_page);
+}
+
+function condBadge(c) {
+  const map = { 'Excellent':'badge-excellent','Good':'badge-good','Fair':'badge-fair','Needs Repair':'badge-repair' };
+  return `<span class="badge ${map[c]||''}">${c}</span>`;
+}
+function availBadge(avail, total) {
+  return avail > 0
+    ? `<span class="badge badge-available">${avail}/${total} avail</span>`
+    : `<span class="badge badge-rented">Rented Out</span>`;
+}
+
+function renderGrid(items) {
+  return `<div class="inventory-grid" style="padding:20px">` + items.map(it => `
+    <div class="item-card">
+      <div class="item-card-img">
+        ${it.image_url ? `<img src="${it.image_url}" style="width:100%;height:100%;object-fit:cover" alt="${it.name}" onerror="this.style.display='none'">` : ''}
+        <span style="${it.image_url?'display:none':''}">${categoryEmoji[it.category_name]||'🥻'}</span>
+        <div class="item-card-badge">${availBadge(it.quantity_available, it.quantity_total)}</div>
+      </div>
+      <div class="item-card-body">
+        <div class="item-name">${it.name}</div>
+        <div class="item-meta">${it.category_name} • ${it.size} • ${it.color}</div>
+        <div class="flex items-center justify-between">
+          <div class="item-price">₹${Number(it.rental_price).toLocaleString('en-IN')}<span>/day</span></div>
+          ${condBadge(it.condition_status)}
+        </div>
+      </div>
+      <div class="item-card-footer">
+        <button class="btn btn-ghost btn-sm w-full" onclick="viewItem(${it.id})">
+          <span class="material-symbols-rounded">visibility</span> View
+        </button>
+        <button class="btn btn-outline btn-sm w-full" onclick="editItem(${it.id})">
+          <span class="material-symbols-rounded">edit</span> Edit
+        </button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteItem(${it.id},'${it.name.replace(/'/g,"\\'")}')">
+          <span class="material-symbols-rounded">delete</span>
+        </button>
+      </div>
+    </div>`).join('') + `</div>`;
+}
+
+function renderTable(items) {
+  return `<div class="table-wrapper">
+    <table>
+      <thead><tr>
+        <th>Item</th><th>Category</th><th>Size</th><th>Color</th>
+        <th>Rental Price</th><th>Deposit</th><th>Stock</th><th>Condition</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${items.map(it=>`
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:32px;height:32px;background:var(--accent-pale);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${categoryEmoji[it.category_name]||'🥻'}</div>
+              <div>
+                <div style="font-weight:600;color:var(--primary)">${it.name}</div>
+                <div class="text-muted text-sm">${it.occasion||''}</div>
+              </div>
+            </div>
+          </td>
+          <td>${it.category_name}</td>
+          <td><span class="badge" style="background:var(--surface-2);color:var(--text-secondary)">${it.size}</span></td>
+          <td>${it.color}</td>
+          <td style="font-weight:700;color:var(--accent)">₹${Number(it.rental_price).toLocaleString('en-IN')}</td>
+          <td>₹${Number(it.deposit_amount).toLocaleString('en-IN')}</td>
+          <td>${availBadge(it.quantity_available, it.quantity_total)}</td>
+          <td>${condBadge(it.condition_status)}</td>
+          <td>
+            <div class="td-actions">
+              <button class="btn btn-ghost btn-sm btn-icon" onclick="viewItem(${it.id})" title="View"><span class="material-symbols-rounded">visibility</span></button>
+              <button class="btn btn-outline btn-sm btn-icon" onclick="editItem(${it.id})" title="Edit"><span class="material-symbols-rounded">edit</span></button>
+              <button class="btn btn-danger btn-sm btn-icon" onclick="deleteItem(${it.id},'${it.name.replace(/'/g,"\\'")}')"><span class="material-symbols-rounded">delete</span></button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function renderPagination(total, page, pages, per_page) {
+  const pag = document.getElementById('inv-pagination');
+  const start = (page-1)*per_page+1, end = Math.min(page*per_page, total);
+  document.getElementById('inv-pag-info').textContent = `Showing ${start}–${end} of ${total} items`;
+  let btns = `<button class="page-btn" onclick="goPage(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+  for (let i=Math.max(1,page-2); i<=Math.min(pages,page+2); i++) {
+    btns += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  btns += `<button class="page-btn" onclick="goPage(${page+1})" ${page>=pages?'disabled':''}>›</button>`;
+  document.getElementById('inv-pag-btns').innerHTML = btns;
+  pag.style.display = total > per_page ? 'flex' : 'none';
+}
+
+function goPage(p) { if(p<1||p>invPages) return; invPage=p; loadInventory(); }
+
+function setView(v) {
+  invView = v;
+  document.getElementById('btn-grid-view').classList.toggle('btn-primary', v==='grid');
+  document.getElementById('btn-grid-view').classList.toggle('btn-ghost',   v!=='grid');
+  document.getElementById('btn-table-view').classList.toggle('btn-primary', v==='table');
+  document.getElementById('btn-table-view').classList.toggle('btn-ghost',   v!=='table');
+  loadInventory();
+}
+
+// ── View Item ──────────────────────────────────────────────
+async function viewItem(id) {
+  const r = await api(`/api/inventory/${id}`);
+  if (r.status !== 'success') return;
+  const it = r.data;
+  document.getElementById('view-item-body').innerHTML = `
+    <div style="display:flex;gap:20px;margin-bottom:16px">
+      <div style="width:100px;height:100px;background:var(--accent-pale);border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;font-size:52px;flex-shrink:0">
+        ${it.image_url?`<img src="${it.image_url}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-lg)" onerror="this.style.display='none'">`:''}
+        ${categoryEmoji[it.category_name]||'🥻'}
+      </div>
+      <div style="flex:1">
+        <h2 style="font-size:1.2rem;margin-bottom:4px">${it.name}</h2>
+        <p class="text-muted text-sm">${it.category_name} • ${it.occasion||'General'}</p>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          ${availBadge(it.quantity_available, it.quantity_total)}
+          ${condBadge(it.condition_status)}
+        </div>
+      </div>
+    </div>
+    <div>
+      ${[
+        ['Size', it.size], ['Color', it.color], ['Fabric', it.fabric||'—'],
+        ['Rental Price', `<strong style="color:var(--accent)">₹${Number(it.rental_price).toLocaleString('en-IN')}/day</strong>`],
+        ['Deposit', `₹${Number(it.deposit_amount).toLocaleString('en-IN')}`],
+        ['Total Qty', it.quantity_total], ['Available', it.quantity_available],
+        ['Description', it.description||'—'],
+      ].map(([l,v])=>`<div class="detail-row"><span class="detail-label">${l}</span><span class="detail-value">${v}</span></div>`).join('')}
+    </div>`;
+  document.getElementById('view-edit-btn').onclick = () => { closeModal('view-item-modal'); editItem(id); };
+  openModal('view-item-modal');
+}
+
+// ── Open Add Modal ─────────────────────────────────────────
+function openItemModal() {
+  document.getElementById('item-id').value = '';
+  document.getElementById('item-modal-title').textContent = 'Add New Item';
+  document.getElementById('item-submit-label').textContent = 'Add Item';
+  document.getElementById('item-form').reset();
+  openModal('item-modal');
+}
+window.openNewItemModal = openItemModal;
+
+// ── Open Edit Modal ────────────────────────────────────────
+async function editItem(id) {
+  const r = await api(`/api/inventory/${id}`);
+  if (r.status !== 'success') { showToast('Failed to load item', 'error'); return; }
+  const it = r.data;
+  document.getElementById('item-id').value          = it.id;
+  document.getElementById('item-modal-title').textContent   = 'Edit Item';
+  document.getElementById('item-submit-label').textContent  = 'Save Changes';
+  document.getElementById('item-name').value         = it.name;
+  document.getElementById('item-category').value     = it.category_id;
+  document.getElementById('item-size').value         = it.size;
+  document.getElementById('item-color').value        = it.color;
+  document.getElementById('item-fabric').value       = it.fabric||'';
+  document.getElementById('item-occasion').value     = it.occasion||'';
+  document.getElementById('item-rental-price').value = it.rental_price;
+  document.getElementById('item-deposit').value      = it.deposit_amount;
+  document.getElementById('item-qty').value          = it.quantity_total;
+  document.getElementById('item-condition').value    = it.condition_status;
+  document.getElementById('item-desc').value         = it.description||'';
+  document.getElementById('item-image').value        = it.image_url||'';
+  openModal('item-modal');
+}
+
+// ── Submit Form ────────────────────────────────────────────
+async function submitItemForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('item-id').value;
+  const body = {
+    name:             document.getElementById('item-name').value,
+    category_id:      document.getElementById('item-category').value,
+    size:             document.getElementById('item-size').value,
+    color:            document.getElementById('item-color').value,
+    fabric:           document.getElementById('item-fabric').value,
+    occasion:         document.getElementById('item-occasion').value,
+    rental_price:     document.getElementById('item-rental-price').value,
+    deposit_amount:   document.getElementById('item-deposit').value,
+    quantity_total:   document.getElementById('item-qty').value,
+    condition_status: document.getElementById('item-condition').value,
+    description:      document.getElementById('item-desc').value,
+    image_url:        document.getElementById('item-image').value,
+  };
+  const btn = document.querySelector('#item-modal .btn-primary');
+  btn.disabled = true; btn.innerHTML = '<span class="material-symbols-rounded" style="animation:spin 0.7s linear infinite">autorenew</span> Saving…';
+  const r = id
+    ? await api(`/api/inventory/${id}`, { method:'PUT',  body: JSON.stringify(body) })
+    : await api('/api/inventory',        { method:'POST', body: JSON.stringify(body) });
+  btn.disabled = false; btn.innerHTML = '<span class="material-symbols-rounded">save</span> <span id="item-submit-label">' + (id?'Save Changes':'Add Item') + '</span>';
+  if (r.status === 'success') {
+    showToast(r.message, 'success');
+    closeModal('item-modal');
+    loadInventory();
+  } else {
+    showToast(r.message || 'Something went wrong', 'error');
+  }
+}
+
+// ── Delete ─────────────────────────────────────────────────
+async function deleteItem(id, name) {
+  const ok = await confirmDialog(`Delete <strong>${name}</strong>? This cannot be undone.`);
+  if (!ok) return;
+  const r = await api(`/api/inventory/${id}`, { method:'DELETE' });
+  if (r.status === 'success') { showToast(r.message, 'success'); loadInventory(); }
+  else showToast(r.message || 'Delete failed', 'error');
+}
+
+// ── Init ───────────────────────────────────────────────────
+setView('grid');
+loadCategories();
+loadInventory();
+</script>
+{% endblock %}

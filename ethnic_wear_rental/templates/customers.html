@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block page_title %}Customers{% endblock %}
+{% block page_subtitle %}Manage your customer database{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="openCustomerModal()">
+  <span class="material-symbols-rounded">person_add</span> Add Customer
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Filter Bar -->
+<div class="card" style="margin-bottom:20px">
+  <div class="filter-bar">
+    <div class="search-bar">
+      <span class="search-icon material-symbols-rounded">search</span>
+      <input type="text" class="form-control" id="cust-search"
+             placeholder="Search by name, phone or email…" oninput="debounceLoad()">
+    </div>
+    <span class="text-muted text-sm" id="cust-total-label"></span>
+  </div>
+</div>
+
+<!-- Customer Grid -->
+<div class="card">
+  <div id="customers-area">
+    <div class="loading-state"><div class="spinner"></div><p style="margin-top:12px">Loading…</p></div>
+  </div>
+  <div class="pagination" id="cust-pagination" style="display:none">
+    <span class="pagination-info" id="cust-pag-info"></span>
+    <div class="pagination-btns" id="cust-pag-btns"></div>
+  </div>
+</div>
+
+<!-- ══ ADD / EDIT CUSTOMER MODAL ═════════════════════════════ -->
+<div class="modal-overlay" id="customer-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">person</span>
+        <span id="cust-modal-title">Add Customer</span>
+      </span>
+      <button class="modal-close" onclick="closeModal('customer-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="cust-form" onsubmit="submitCustomerForm(event)">
+        <input type="hidden" id="cust-id">
+        <div class="form-row">
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Full Name *</label>
+            <input type="text" class="form-control" id="cust-name" placeholder="e.g. Priya Sharma" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone *</label>
+            <input type="tel" class="form-control" id="cust-phone" placeholder="9876543210" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" id="cust-email" placeholder="priya@email.com">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Address</label>
+            <textarea class="form-control" id="cust-address" placeholder="Full address…" style="min-height:60px"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">ID Proof Type</label>
+            <select class="form-control" id="cust-id-type">
+              <option>Aadhar</option><option>PAN</option><option>Passport</option>
+              <option>Voter ID</option><option>Driving Licence</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">ID Proof Number</label>
+            <input type="text" class="form-control" id="cust-id-number" placeholder="XXXX-XXXX-1234">
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('customer-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCustomerForm(event)">
+        <span class="material-symbols-rounded">save</span>
+        <span id="cust-submit-label">Add Customer</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW CUSTOMER MODAL ════════════════════════════════════ -->
+<div class="modal-overlay" id="view-customer-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">
+        <span class="material-symbols-rounded">person</span>
+        Customer Profile
+      </span>
+      <button class="modal-close" onclick="closeModal('view-customer-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="view-customer-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('view-customer-modal')">Close</button>
+      <button class="btn btn-outline" id="view-cust-edit-btn">
+        <span class="material-symbols-rounded">edit</span> Edit
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let custPage = 1, custPages = 1;
+let debounceTimer;
+
+function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(()=>{ custPage=1; loadCustomers(); }, 350); }
+
+function initials(name) {
+  return name.split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+}
+
+async function loadCustomers() {
+  const search = document.getElementById('cust-search').value;
+  const area   = document.getElementById('customers-area');
+  area.innerHTML = `<div class="loading-state"><div class="spinner"></div><p style="margin-top:12px">Loading…</p></div>`;
+
+  const r = await api(`/api/customers?search=${encodeURIComponent(search)}&page=${custPage}&per_page=12`);
+  if (r.status !== 'success') {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error loading customers</h3></div>`;
+    return;
+  }
+  custPages = r.data.pages;
+  document.getElementById('cust-total-label').textContent = `${r.data.total} customer${r.data.total!==1?'s':''}`;
+
+  if (r.data.customers.length === 0) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><h3>No customers found</h3><p>Add your first customer to get started.</p><button class="btn btn-primary mt-4" onclick="openCustomerModal()"><span class="material-symbols-rounded">person_add</span> Add Customer</button></div>`;
+    document.getElementById('cust-pagination').style.display = 'none';
+    return;
+  }
+
+  area.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;padding:20px">
+      ${r.data.customers.map(c => `
+        <div class="card" style="cursor:pointer;transition:var(--transition)" onmouseenter="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--shadow)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
+          <div style="padding:20px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+              <div class="avatar" style="width:48px;height:48px;font-size:1rem">${initials(c.name)}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--primary);font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+                <div style="font-size:0.78rem;color:var(--text-muted)">${c.phone}</div>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();viewCustomer(${c.id})" title="View Profile"><span class="material-symbols-rounded">visibility</span></button>
+                <button class="btn btn-outline btn-sm btn-icon" onclick="event.stopPropagation();editCustomer(${c.id})" title="Edit"><span class="material-symbols-rounded">edit</span></button>
+                <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();deleteCustomer(${c.id},'${c.name.replace(/'/g,"\\'")}')"><span class="material-symbols-rounded">delete</span></button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="background:var(--surface-2);padding:10px;border-radius:var(--radius);text-align:center">
+                <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;color:var(--primary)">${c.total_rentals||0}</div>
+                <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)">Total Rentals</div>
+              </div>
+              <div style="background:${(c.active_rentals||0)>0?'var(--accent-pale)':'var(--surface-2)'};padding:10px;border-radius:var(--radius);text-align:center">
+                <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;color:${(c.active_rentals||0)>0?'var(--accent)':'var(--text-muted)'}">${c.active_rentals||0}</div>
+                <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)">Active</div>
+              </div>
+            </div>
+            ${c.email ? `<div style="margin-top:10px;font-size:0.8rem;color:var(--text-muted);display:flex;align-items:center;gap:6px"><span class="material-symbols-rounded" style="font-size:15px">mail</span>${c.email}</div>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+
+  renderPagination(r.data.total, r.data.page, r.data.pages, r.data.per_page);
+}
+
+function renderPagination(total, page, pages, per_page) {
+  const pag = document.getElementById('cust-pagination');
+  if (total <= per_page) { pag.style.display='none'; return; }
+  const start = (page-1)*per_page+1, end = Math.min(page*per_page, total);
+  document.getElementById('cust-pag-info').textContent = `Showing ${start}–${end} of ${total}`;
+  let btns = `<button class="page-btn" onclick="goPage(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+  for (let i=Math.max(1,page-2); i<=Math.min(pages,page+2); i++) {
+    btns += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  btns += `<button class="page-btn" onclick="goPage(${page+1})" ${page>=pages?'disabled':''}>›</button>`;
+  document.getElementById('cust-pag-btns').innerHTML = btns;
+  pag.style.display = 'flex';
+}
+
+function goPage(p) { if(p<1||p>custPages) return; custPage=p; loadCustomers(); }
+
+// ── View Customer ──────────────────────────────────────────
+async function viewCustomer(id) {
+  const r = await api(`/api/customers/${id}`);
+  if (r.status !== 'success') return;
+  const { customer: c, rentals } = r.data;
+  const statusBadge = s => {
+    const map = { Active:'badge-active', Returned:'badge-returned', Overdue:'badge-overdue', Cancelled:'badge-cancelled' };
+    return `<span class="badge ${map[s]||''}">${s}</span>`;
+  };
+  document.getElementById('view-customer-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding:16px;background:linear-gradient(135deg,var(--accent-pale),var(--surface-2));border-radius:var(--radius-lg)">
+      <div class="avatar" style="width:64px;height:64px;font-size:1.4rem">${initials(c.name)}</div>
+      <div>
+        <h2 style="margin-bottom:4px">${c.name}</h2>
+        <div style="display:flex;gap:12px;font-size:0.83rem;color:var(--text-muted)">
+          <span><span class="material-symbols-rounded" style="font-size:15px;vertical-align:middle">call</span> ${c.phone}</span>
+          ${c.email?`<span><span class="material-symbols-rounded" style="font-size:15px;vertical-align:middle">mail</span> ${c.email}</span>`:''}
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      ${[['Address', c.address||'—'], ['ID Proof', `${c.id_proof_type}: ${c.id_proof_number||'—'}`],
+         ['Member Since', fmtDate(c.created_at)]].map(([l,v])=>`
+        <div style="padding:14px;background:var(--surface-2);border-radius:var(--radius);border:1px solid var(--border)">
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:4px">${l}</div>
+          <div style="font-weight:600;font-size:0.87rem">${v}</div>
+        </div>`).join('')}
+    </div>
+    ${rentals.length > 0 ? `
+      <h3 style="margin-bottom:12px;font-size:1rem">Rental History (${rentals.length})</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Code</th><th>Rental Date</th><th>Due Date</th><th>Items</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>${rentals.map(r=>`
+            <tr>
+              <td><strong style="color:var(--primary)">${r.rental_code}</strong></td>
+              <td>${fmtDate(r.rental_date)}</td>
+              <td>${fmtDate(r.return_due_date)}</td>
+              <td>${r.item_count}</td>
+              <td style="font-weight:600;color:var(--accent)">${fmt(r.total_amount)}</td>
+              <td>${statusBadge(r.status)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : `<div class="empty-state" style="padding:30px"><div class="empty-icon">📋</div><h3>No rentals yet</h3></div>`}`;
+  document.getElementById('view-cust-edit-btn').onclick = () => { closeModal('view-customer-modal'); editCustomer(id); };
+  openModal('view-customer-modal');
+}
+
+// ── Open Add Modal ─────────────────────────────────────────
+function openCustomerModal() {
+  document.getElementById('cust-id').value = '';
+  document.getElementById('cust-modal-title').textContent  = 'Add Customer';
+  document.getElementById('cust-submit-label').textContent = 'Add Customer';
+  document.getElementById('cust-form').reset();
+  openModal('customer-modal');
+}
+window.openNewCustomerModal = openCustomerModal;
+
+// ── Open Edit Modal ────────────────────────────────────────
+async function editCustomer(id) {
+  const r = await api(`/api/customers/${id}`);
+  if (r.status !== 'success') { showToast('Failed to load customer', 'error'); return; }
+  const c = r.data.customer;
+  document.getElementById('cust-id').value           = c.id;
+  document.getElementById('cust-modal-title').textContent  = 'Edit Customer';
+  document.getElementById('cust-submit-label').textContent = 'Save Changes';
+  document.getElementById('cust-name').value         = c.name;
+  document.getElementById('cust-phone').value        = c.phone;
+  document.getElementById('cust-email').value        = c.email||'';
+  document.getElementById('cust-address').value      = c.address||'';
+  document.getElementById('cust-id-type').value      = c.id_proof_type||'Aadhar';
+  document.getElementById('cust-id-number').value    = c.id_proof_number||'';
+  openModal('customer-modal');
+}
+
+// ── Submit ─────────────────────────────────────────────────
+async function submitCustomerForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('cust-id').value;
+  const body = {
+    name:            document.getElementById('cust-name').value,
+    phone:           document.getElementById('cust-phone').value,
+    email:           document.getElementById('cust-email').value,
+    address:         document.getElementById('cust-address').value,
+    id_proof_type:   document.getElementById('cust-id-type').value,
+    id_proof_number: document.getElementById('cust-id-number').value,
+  };
+  const btn = document.querySelector('#customer-modal .btn-primary');
+  btn.disabled = true;
+  const r = id
+    ? await api(`/api/customers/${id}`, { method:'PUT',  body: JSON.stringify(body) })
+    : await api('/api/customers',        { method:'POST', body: JSON.stringify(body) });
+  btn.disabled = false;
+  if (r.status === 'success') { showToast(r.message, 'success'); closeModal('customer-modal'); loadCustomers(); }
+  else showToast(r.message || 'Something went wrong', 'error');
+}
+
+// ── Delete ─────────────────────────────────────────────────
+async function deleteCustomer(id, name) {
+  const ok = await confirmDialog(`Delete customer <strong>${name}</strong>? Their rental history will remain.`);
+  if (!ok) return;
+  const r = await api(`/api/customers/${id}`, { method:'DELETE' });
+  if (r.status === 'success') { showToast(r.message, 'success'); loadCustomers(); }
+  else showToast(r.message || 'Delete failed', 'error');
+}
+
+loadCustomers();
+</script>
+{% endblock %}
